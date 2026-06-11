@@ -14,65 +14,12 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    .block-container { padding: 1rem; }
+    .block-container { padding: 1rem 1rem 3rem 1rem; }
     h1 { font-size: 1.6rem; }
-    h2 { font-size: 1.2rem; }
-
-    /* Destination card */
-    .dest-card {
-        background: #f8f9fb;
-        border: 1px solid #e0e4ea;
-        border-radius: 10px;
-        padding: 0.9rem 1.1rem 0.6rem 1.1rem;
-        margin-bottom: 1rem;
-    }
-    .dest-title {
-        font-size: 1.05rem;
-        font-weight: 700;
-        margin-bottom: 0.5rem;
-        color: #1a1a2e;
-    }
-
-    /* Flight row */
-    .flight-row {
-        background: white;
-        border: 1px solid #e8ecf0;
-        border-radius: 8px;
-        padding: 0.55rem 0.8rem;
-        margin-bottom: 0.4rem;
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 0.5rem;
-    }
-    .price-badge {
-        background: #4C8BF5;
-        color: white;
-        border-radius: 6px;
-        padding: 0.2rem 0.55rem;
-        font-weight: 700;
-        font-size: 0.95rem;
-        white-space: nowrap;
-    }
-    .cheapest-badge {
-        background: #28a745;
-    }
-    .flight-detail {
-        font-size: 0.82rem;
-        color: #444;
-        white-space: nowrap;
-    }
-    .flight-sep {
-        color: #aaa;
-        font-size: 0.75rem;
-    }
-    .duration-tag {
-        font-size: 0.75rem;
-        color: #888;
-        background: #f0f2f5;
-        border-radius: 4px;
-        padding: 0.1rem 0.4rem;
-        white-space: nowrap;
+    /* Tighten space between destination sections */
+    .dest-header {
+        margin-top: 0.2rem;
+        margin-bottom: 0.1rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -135,13 +82,12 @@ def load_data() -> pd.DataFrame:
         if current_airport and c0 and c1 is not None and c2 and c3:
             rows.append({
                 "departure_airport": current_airport,
-                "destination": str(c0).strip(),
-                "price": float(c1),
+                "destination":       str(c0).strip(),
+                "price":             float(c1),
                 "departure_datetime": parse_datetime(str(c2)),
-                "return_datetime": parse_datetime(str(c3)),
+                "return_datetime":    parse_datetime(str(c3)),
             })
-    df = pd.DataFrame(rows).drop_duplicates().reset_index(drop=True)
-    return df
+    return pd.DataFrame(rows).drop_duplicates().reset_index(drop=True)
 
 
 # ── Load ────────────────────────────────────────────────────────────────────────
@@ -168,20 +114,23 @@ with st.sidebar:
     )
 
 # ── Apply filters ───────────────────────────────────────────────────────────────
-filtered = df[
-    df["departure_airport"].isin(sel_airports)
-    & df["destination"].isin(sel_destinations)
-    & (df["price"] <= sel_max_price)
-].sort_values("price").reset_index(drop=True)
+filtered = (
+    df[
+        df["departure_airport"].isin(sel_airports)
+        & df["destination"].isin(sel_destinations)
+        & (df["price"] <= sel_max_price)
+    ]
+    .sort_values("price")
+    .reset_index(drop=True)
+)
 
-# ── Header ───────────────────────────────────────────────────────────────────────
+# ── Header metrics ───────────────────────────────────────────────────────────────
 st.title("✈️ Flight Comparison")
 
-with st.container():
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Flights found", len(filtered))
-    c2.metric("Cheapest", f"€{filtered['price'].min():.2f}" if len(filtered) else "—")
-    c3.metric("Avg price", f"€{filtered['price'].mean():.2f}" if len(filtered) else "—")
+c1, c2, c3 = st.columns(3)
+c1.metric("Flights found", len(filtered))
+c2.metric("Cheapest", f"€{filtered['price'].min():.2f}" if len(filtered) else "—")
+c3.metric("Avg price",  f"€{filtered['price'].mean():.2f}" if len(filtered) else "—")
 
 st.divider()
 
@@ -189,73 +138,109 @@ if filtered.empty:
     st.info("No flights match the current filters.")
     st.stop()
 
-# ── Per-airport tabs ──────────────────────────────────────────────────────────
-airports_in_view = sorted(filtered["departure_airport"].unique())
-tabs = st.tabs([f"🛫 {ap}" for ap in airports_in_view])
 
-for tab, airport in zip(tabs, airports_in_view):
+# ── Helper: build display table for one destination block ────────────────────────
+def build_display(dest_df: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    cheapest = dest_df["price"].min()
+    for _, r in dest_df.iterrows():
+        dep = r["departure_datetime"]
+        ret = r["return_datetime"]
+        nights = (ret.date() - dep.date()).days if pd.notna(dep) and pd.notna(ret) else None
+        rows.append({
+            "Price (€)":      r["price"],
+            "Dep. date":      dep.strftime("%a %d %b") if pd.notna(dep) else "—",
+            "Dep. time":      dep.strftime("%H:%M")    if pd.notna(dep) else "—",
+            "Return date":    ret.strftime("%a %d %b") if pd.notna(ret) else "—",
+            "Return time":    ret.strftime("%H:%M")    if pd.notna(ret) else "—",
+            "Nights":         int(nights) if nights is not None else None,
+            "_cheapest":      r["price"] == cheapest,
+        })
+    out = pd.DataFrame(rows)
+    return out
+
+
+# ── Per-airport tabs ──────────────────────────────────────────────────────────────
+airport_list = sorted(filtered["departure_airport"].unique())
+tabs = st.tabs([f"🛫 {ap}" for ap in airport_list])
+
+for tab, airport in zip(tabs, airport_list):
     with tab:
         ap_df = filtered[filtered["departure_airport"] == airport]
-        destinations_in_ap = ap_df.sort_values("price")["destination"].unique()
 
-        # ── Per-destination cards ──────────────────────────────────────────────
-        for dest in destinations_in_ap:
+        # Order destinations by cheapest available price
+        dest_order = (
+            ap_df.groupby("destination")["price"].min()
+            .sort_values()
+            .index.tolist()
+        )
+
+        for dest in dest_order:
             dest_df = ap_df[ap_df["destination"] == dest].sort_values("price")
-            cheapest_price = dest_df["price"].min()
+            cheapest = dest_df["price"].min()
             n = len(dest_df)
 
-            flight_rows_html = ""
-            for _, row in dest_df.iterrows():
-                dep = row["departure_datetime"]
-                ret = row["return_datetime"]
+            # Section header
+            st.markdown(
+                f"### 🌍 {dest} &nbsp;"
+                f"<span style='font-size:0.82rem;font-weight:400;color:#666;'>"
+                f"{n} option{'s' if n>1 else ''} &nbsp;·&nbsp; from €{cheapest:.2f}"
+                f"</span>",
+                unsafe_allow_html=True,
+            )
 
-                dep_str  = dep.strftime("%a %d %b  %H:%M") if pd.notna(dep) else "—"
-                ret_str  = ret.strftime("%a %d %b  %H:%M") if pd.notna(ret) else "—"
+            display = build_display(dest_df)
+            is_cheapest = display.pop("_cheapest")
 
-                # trip duration in nights
-                if pd.notna(dep) and pd.notna(ret):
-                    nights = (ret.date() - dep.date()).days
-                    duration = f"{nights} nights"
-                else:
-                    duration = ""
+            st.dataframe(
+                display,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Price (€)": st.column_config.NumberColumn(
+                        "💶 Price",
+                        format="€%.2f",
+                        width="small",
+                    ),
+                    "Dep. date": st.column_config.TextColumn(
+                        "🛫 Departs",
+                        width="medium",
+                    ),
+                    "Dep. time": st.column_config.TextColumn(
+                        "⏰ Time",
+                        width="small",
+                    ),
+                    "Return date": st.column_config.TextColumn(
+                        "🛬 Returns",
+                        width="medium",
+                    ),
+                    "Return time": st.column_config.TextColumn(
+                        "⏰ Time",
+                        width="small",
+                    ),
+                    "Nights": st.column_config.NumberColumn(
+                        "🌙 Nights",
+                        width="small",
+                        format="%d",
+                    ),
+                },
+            )
 
-                is_cheapest = row["price"] == cheapest_price
-                badge_class = "price-badge cheapest-badge" if is_cheapest else "price-badge"
-
-                flight_rows_html += f"""
-                <div class="flight-row">
-                    <span class="{badge_class}">€{row['price']:.2f}</span>
-                    <span class="flight-detail">🛫 {dep_str}</span>
-                    <span class="flight-sep">→</span>
-                    <span class="flight-detail">🛬 {ret_str}</span>
-                    {"<span class='duration-tag'>🌙 " + duration + "</span>" if duration else ""}
-                </div>"""
-
-            st.markdown(f"""
-            <div class="dest-card">
-                <div class="dest-title">🌍 {dest}
-                    <span style="font-weight:400;font-size:0.82rem;color:#666;margin-left:0.5rem;">
-                        {n} option{"s" if n > 1 else ""} · from €{cheapest_price:.2f}
-                    </span>
-                </div>
-                {flight_rows_html}
-            </div>
-            """, unsafe_allow_html=True)
-
-st.divider()
+        st.divider()
 
 # ── Chart ────────────────────────────────────────────────────────────────────────
 st.subheader("📊 Average price per destination")
 
-avg_by_dest = (
-    filtered.groupby(["destination", "departure_airport"], as_index=False)["price"]
+avg_df = (
+    filtered
+    .groupby(["destination", "departure_airport"], as_index=False)["price"]
     .mean()
     .sort_values("price")
 )
 
 chart = (
-    alt.Chart(avg_by_dest)
-    .mark_bar()
+    alt.Chart(avg_df)
+    .mark_bar(cornerRadiusEnd=4)
     .encode(
         x=alt.X("price:Q", title="Average price (€)", axis=alt.Axis(format=",.0f")),
         y=alt.Y("destination:N", sort="-x", title=None),
@@ -266,11 +251,11 @@ chart = (
         ),
         tooltip=[
             alt.Tooltip("departure_airport:N", title="From"),
-            alt.Tooltip("destination:N", title="To"),
+            alt.Tooltip("destination:N",       title="To"),
             alt.Tooltip("price:Q", title="Avg price (€)", format=".2f"),
         ],
     )
-    .properties(height=max(180, len(avg_by_dest) * 30))
+    .properties(height=max(180, len(avg_df) * 32))
 )
 
 st.altair_chart(chart, use_container_width=True)
