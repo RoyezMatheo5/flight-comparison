@@ -6,7 +6,7 @@ import openpyxl
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Flight Comparison",
+    page_title="Vluchten Vergelijken",
     page_icon="✈️",
     layout="centered",
     initial_sidebar_state="expanded",
@@ -56,7 +56,7 @@ def parse_dt(raw: str):
     for fmt in ("%A %d %B %Y %H:%M", "%A %d %B %H:%M"):
         try:
             dt = pd.to_datetime(c, format=fmt)
-            return dt.replace(year=2025) if dt.year == 1900 else dt
+            return dt.replace(year=2026) if dt.year == 1900 else dt
         except ValueError:
             pass
     return None
@@ -89,13 +89,13 @@ df = load_data()
 with st.sidebar:
     st.header("🔍 Filters")
     airports     = sorted(df["departure_airport"].unique())
-    sel_airports = st.multiselect("Departure airport", airports, default=airports)
+    sel_airports = st.multiselect("Vertrekluchthaven", airports, default=airports)
 
     destinations     = sorted(df["destination"].unique())
-    sel_destinations = st.multiselect("Destination", destinations, default=destinations)
+    sel_destinations = st.multiselect("Bestemming", destinations, default=destinations)
 
     min_p, max_p = float(df["price"].min()), float(df["price"].max())
-    sel_max_price = st.slider("Max price (€)", min_p, max_p, max_p, step=1.0)
+    sel_max_price = st.slider("Max prijs (€)", min_p, max_p, max_p, step=1.0)
 
 filtered = (
     df[
@@ -108,18 +108,39 @@ filtered = (
 )
 
 # ── Page header ────────────────────────────────────────────────────────────────
-st.title("✈️ Flight Comparison")
+st.title("✈️ Vluchten Vergelijken")
 
 c1, c2, c3 = st.columns(3)
-c1.metric("Flights", len(filtered))
-c2.metric("Cheapest", f"€{filtered['price'].min():.2f}" if len(filtered) else "—")
-c3.metric("Avg",      f"€{filtered['price'].mean():.2f}" if len(filtered) else "—")
+c1.metric("Vluchten", len(filtered))
+c2.metric("Goedkoopste", f"€{filtered['price'].min():.2f}" if len(filtered) else "—")
+c3.metric("Gemiddeld",   f"€{filtered['price'].mean():.2f}" if len(filtered) else "—")
 
 st.divider()
 
 if filtered.empty:
-    st.info("No flights match the current filters.")
+    st.info("Geen vluchten gevonden voor de huidige filters.")
     st.stop()
+
+
+NL_DAYS = {
+    "Mon": "Ma", "Tue": "Di", "Wed": "Wo",
+    "Thu": "Do", "Fri": "Vr", "Sat": "Za", "Sun": "Zo",
+}
+NL_MONTHS = {
+    "Jan": "jan", "Feb": "feb", "Mar": "mrt", "Apr": "apr",
+    "May": "mei", "Jun": "jun", "Jul": "jul", "Aug": "aug",
+    "Sep": "sep", "Oct": "okt", "Nov": "nov", "Dec": "dec",
+}
+
+
+def nl_date(dt) -> str:
+    """Return a Dutch short date string, e.g. 'Za 26 jul'."""
+    s = dt.strftime("%a %d %b")
+    for en, nl in NL_DAYS.items():
+        s = s.replace(en, nl)
+    for en, nl in NL_MONTHS.items():
+        s = s.replace(en, nl)
+    return s
 
 
 # ── Flight card (one per flight row) ──────────────────────────────────────────
@@ -128,14 +149,14 @@ def flight_card(row: pd.Series, is_cheapest: bool) -> None:
     ret = row["return_datetime"]
     nights = (ret.date() - dep.date()).days if pd.notna(dep) and pd.notna(ret) else None
 
-    dep_date = dep.strftime("%a %d %b") if pd.notna(dep) else "—"
-    dep_time = dep.strftime("%H:%M")    if pd.notna(dep) else "—"
-    ret_date = ret.strftime("%a %d %b") if pd.notna(ret) else "—"
-    ret_time = ret.strftime("%H:%M")    if pd.notna(ret) else "—"
+    dep_date = nl_date(dep)          if pd.notna(dep) else "—"
+    dep_time = dep.strftime("%H:%M") if pd.notna(dep) else "—"
+    ret_date = nl_date(ret)          if pd.notna(ret) else "—"
+    ret_time = ret.strftime("%H:%M") if pd.notna(ret) else "—"
 
     with st.container(border=True):
         # Price row
-        price_label = f"✅ €{row['price']:.2f}  ← cheapest" if is_cheapest else f"€{row['price']:.2f}"
+        price_label = f"✅ €{row['price']:.2f}  ← goedkoopste" if is_cheapest else f"€{row['price']:.2f}"
         st.markdown(
             f"<p style='font-size:1.2rem;font-weight:700;margin:0 0 0.5rem 0;"
             f"color:{'#1a7f37' if is_cheapest else '#1a1a2e'};'>{price_label}</p>",
@@ -145,16 +166,16 @@ def flight_card(row: pd.Series, is_cheapest: bool) -> None:
         # Two columns: departure | return
         left, right = st.columns(2)
         with left:
-            st.markdown("**🛫 Departure**")
+            st.markdown("**🛫 Vertrek**")
             st.markdown(f"{dep_date}")
             st.markdown(f"🕐 **{dep_time}**")
         with right:
-            st.markdown("**🛬 Return**")
+            st.markdown("**🛬 Terug**")
             st.markdown(f"{ret_date}")
             st.markdown(f"🕐 **{ret_time}**")
 
         if nights is not None:
-            st.caption(f"🌙 {nights} nights")
+            st.caption(f"🌙 {nights} nachten")
 
 
 # ── Per-airport tabs ───────────────────────────────────────────────────────────
@@ -178,7 +199,7 @@ for tab, airport in zip(tabs, airport_list):
             st.markdown(
                 f"### 🌍 {dest} "
                 f"<span style='font-size:0.8rem;font-weight:400;color:#888;'>"
-                f"{n} option{'s' if n > 1 else ''} · from €{cheapest:.2f}"
+                f"{n} optie{'s' if n > 1 else ''} · vanaf €{cheapest:.2f}"
                 f"</span>",
                 unsafe_allow_html=True,
             )
@@ -190,7 +211,7 @@ for tab, airport in zip(tabs, airport_list):
 
 # ── Chart ──────────────────────────────────────────────────────────────────────
 st.divider()
-st.subheader("📊 Average price per destination")
+st.subheader("📊 Gemiddelde prijs per bestemming")
 
 avg_df = (
     filtered
@@ -207,13 +228,13 @@ chart = (
         y=alt.Y("destination:N", sort="-x", title=None),
         color=alt.Color(
             "departure_airport:N",
-            title="Airport",
+            title="Luchthaven",
             scale=alt.Scale(scheme="tableau10"),
         ),
         tooltip=[
-            alt.Tooltip("departure_airport:N", title="From"),
-            alt.Tooltip("destination:N",       title="To"),
-            alt.Tooltip("price:Q", title="Avg price (€)", format=".2f"),
+            alt.Tooltip("departure_airport:N", title="Van"),
+            alt.Tooltip("destination:N",       title="Naar"),
+            alt.Tooltip("price:Q", title="Gem. prijs (€)", format=".2f"),
         ],
     )
     .properties(height=max(180, len(avg_df) * 32))
