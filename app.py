@@ -50,16 +50,18 @@ def clean_dt(raw: str) -> str:
 
 
 def parse_dt(raw: str):
+    """Parse a Dutch datetime string like 'Vrijdag 31 Juli - 16:40'.
+    We ignore the weekday name entirely and inject 2026 so the correct
+    weekday is always derived from the actual calendar date."""
     if not isinstance(raw, str):
         return None
-    c = clean_dt(raw).replace(" - ", " ").strip()
-    # Strip the leading weekday name (e.g. "Monday ") — day names in the
-    # source data can be wrong, so we derive the correct weekday from the date.
-    c = re.sub(r"^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+", "", c, flags=re.IGNORECASE)
-    for fmt in ("%d %B %Y %H:%M", "%d %B %H:%M"):
+    c = clean_dt(raw)  # translate Dutch day/month names to English
+    # Extract day-number, month-name and time — ignore the leading weekday word
+    m = re.search(r'(\d{1,2})\s+([A-Za-z]+)\s*[-–]\s*(\d{1,2}:\d{2})', c)
+    if m:
+        day_num, month, time = m.group(1), m.group(2), m.group(3)
         try:
-            dt = pd.to_datetime(c, format=fmt)
-            return dt.replace(year=2026) if dt.year == 1900 else dt
+            return pd.to_datetime(f"{day_num} {month} 2026 {time}", format="%d %B %Y %H:%M")
         except ValueError:
             pass
     return None
