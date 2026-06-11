@@ -15,9 +15,65 @@ st.set_page_config(
 st.markdown("""
 <style>
     .block-container { padding: 1rem; }
-    .stDataFrame { width: 100% !important; }
     h1 { font-size: 1.6rem; }
     h2 { font-size: 1.2rem; }
+
+    /* Destination card */
+    .dest-card {
+        background: #f8f9fb;
+        border: 1px solid #e0e4ea;
+        border-radius: 10px;
+        padding: 0.9rem 1.1rem 0.6rem 1.1rem;
+        margin-bottom: 1rem;
+    }
+    .dest-title {
+        font-size: 1.05rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+        color: #1a1a2e;
+    }
+
+    /* Flight row */
+    .flight-row {
+        background: white;
+        border: 1px solid #e8ecf0;
+        border-radius: 8px;
+        padding: 0.55rem 0.8rem;
+        margin-bottom: 0.4rem;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .price-badge {
+        background: #4C8BF5;
+        color: white;
+        border-radius: 6px;
+        padding: 0.2rem 0.55rem;
+        font-weight: 700;
+        font-size: 0.95rem;
+        white-space: nowrap;
+    }
+    .cheapest-badge {
+        background: #28a745;
+    }
+    .flight-detail {
+        font-size: 0.82rem;
+        color: #444;
+        white-space: nowrap;
+    }
+    .flight-sep {
+        color: #aaa;
+        font-size: 0.75rem;
+    }
+    .duration-tag {
+        font-size: 0.75rem;
+        color: #888;
+        background: #f0f2f5;
+        border-radius: 4px;
+        padding: 0.1rem 0.4rem;
+        white-space: nowrap;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -25,7 +81,7 @@ st.markdown("""
 
 DUTCH_DAYS = {
     "maandag": "Monday", "dinsdag": "Tuesday",
-    "woensdag": "Wednesday", "woendsdag": "Wednesday",  # typo fix
+    "woensdag": "Wednesday", "woendsdag": "Wednesday",
     "donderdag": "Thursday", "vrijdag": "Friday",
     "zaterdag": "Saturday", "zondag": "Sunday",
 }
@@ -33,14 +89,13 @@ DUTCH_DAYS = {
 DUTCH_MONTHS = {
     "januari": "January", "februari": "February", "maart": "March",
     "april": "April", "mei": "May", "juni": "June",
-    "juli": "July", "augustus": "August", "augustu": "August",  # typo fix
+    "juli": "July", "augustus": "August", "augustu": "August",
     "september": "September", "oktober": "October",
     "november": "November", "december": "December",
 }
 
 
 def clean_datetime_str(raw: str) -> str:
-    """Normalise Dutch date strings with typos to English before parsing."""
     if not isinstance(raw, str):
         return raw
     s = raw.strip().lower()
@@ -48,21 +103,16 @@ def clean_datetime_str(raw: str) -> str:
         s = s.replace(nl, en)
     for nl, en in DUTCH_MONTHS.items():
         s = s.replace(nl, en)
-    # collapse multiple spaces
-    s = re.sub(r" {2,}", " ", s)
-    return s
+    return re.sub(r" {2,}", " ", s)
 
 
-def parse_datetime(raw: str) -> pd.Timestamp | None:
+def parse_datetime(raw: str):
     if not isinstance(raw, str):
         return None
-    cleaned = clean_datetime_str(raw)
-    # expected format after cleaning: "Monday 27 July - 21:15"
-    cleaned = cleaned.replace(" - ", " ").strip()
+    cleaned = clean_datetime_str(raw).replace(" - ", " ").strip()
     for fmt in ("%A %d %B %Y %H:%M", "%A %d %B %H:%M"):
         try:
             dt = pd.to_datetime(cleaned, format=fmt)
-            # If year is missing pandas defaults to 1900; inject current/next year
             if dt.year == 1900:
                 dt = dt.replace(year=2025)
             return dt
@@ -75,31 +125,22 @@ def parse_datetime(raw: str) -> pd.Timestamp | None:
 def load_data() -> pd.DataFrame:
     wb = openpyxl.load_workbook("flight_data.xlsx")
     ws = wb.active
-
     rows = []
     current_airport = None
-
     for row in ws.iter_rows(values_only=True):
-        col0, col1, col2, col3 = (row[i] if i < len(row) else None for i in range(4))
-
-        # Section header row: first cell has a name, rest are None
-        if col0 and col1 is None and col2 is None and col3 is None:
-            current_airport = str(col0).strip()
+        c0, c1, c2, c3 = (row[i] if i < len(row) else None for i in range(4))
+        if c0 and c1 is None and c2 is None and c3 is None:
+            current_airport = str(c0).strip()
             continue
-
-        # Data row
-        if current_airport and col0 and col1 is not None and col2 and col3:
+        if current_airport and c0 and c1 is not None and c2 and c3:
             rows.append({
                 "departure_airport": current_airport,
-                "destination": str(col0).strip(),
-                "price": float(col1),
-                "departure_datetime": parse_datetime(str(col2)),
-                "return_datetime": parse_datetime(str(col3)),
+                "destination": str(c0).strip(),
+                "price": float(c1),
+                "departure_datetime": parse_datetime(str(c2)),
+                "return_datetime": parse_datetime(str(c3)),
             })
-
-    df = pd.DataFrame(rows)
-    df.drop_duplicates(inplace=True)
-    df.reset_index(drop=True, inplace=True)
+    df = pd.DataFrame(rows).drop_duplicates().reset_index(drop=True)
     return df
 
 
@@ -108,7 +149,7 @@ df = load_data()
 
 # ── Sidebar filters ─────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.header("Filters")
+    st.header("🔍 Filters")
 
     airports = sorted(df["departure_airport"].unique())
     sel_airports = st.multiselect("Departure airport", airports, default=airports)
@@ -131,59 +172,105 @@ filtered = df[
     df["departure_airport"].isin(sel_airports)
     & df["destination"].isin(sel_destinations)
     & (df["price"] <= sel_max_price)
-]
+].sort_values("price").reset_index(drop=True)
 
-filtered = filtered.sort_values("price").reset_index(drop=True)
-
-# ── Main content ────────────────────────────────────────────────────────────────
+# ── Header ───────────────────────────────────────────────────────────────────────
 st.title("✈️ Flight Comparison")
 
 with st.container():
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Flights found", len(filtered))
-    col2.metric("Cheapest", f"€{filtered['price'].min():.2f}" if len(filtered) else "—")
-    col3.metric("Avg price", f"€{filtered['price'].mean():.2f}" if len(filtered) else "—")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Flights found", len(filtered))
+    c2.metric("Cheapest", f"€{filtered['price'].min():.2f}" if len(filtered) else "—")
+    c3.metric("Avg price", f"€{filtered['price'].mean():.2f}" if len(filtered) else "—")
 
 st.divider()
-
-# ── Table ───────────────────────────────────────────────────────────────────────
-st.subheader("Results")
 
 if filtered.empty:
     st.info("No flights match the current filters.")
-else:
-    display = filtered.copy()
-    display["departure_datetime"] = display["departure_datetime"].dt.strftime("%a %d %b %Y  %H:%M")
-    display["return_datetime"] = display["return_datetime"].dt.strftime("%a %d %b %Y  %H:%M")
-    display["price"] = display["price"].map("€{:.2f}".format)
-    display.columns = ["From", "To", "Price", "Departure", "Return"]
-    st.dataframe(display, use_container_width=True, hide_index=True)
+    st.stop()
+
+# ── Per-airport tabs ──────────────────────────────────────────────────────────
+airports_in_view = sorted(filtered["departure_airport"].unique())
+tabs = st.tabs([f"🛫 {ap}" for ap in airports_in_view])
+
+for tab, airport in zip(tabs, airports_in_view):
+    with tab:
+        ap_df = filtered[filtered["departure_airport"] == airport]
+        destinations_in_ap = ap_df.sort_values("price")["destination"].unique()
+
+        # ── Per-destination cards ──────────────────────────────────────────────
+        for dest in destinations_in_ap:
+            dest_df = ap_df[ap_df["destination"] == dest].sort_values("price")
+            cheapest_price = dest_df["price"].min()
+            n = len(dest_df)
+
+            flight_rows_html = ""
+            for _, row in dest_df.iterrows():
+                dep = row["departure_datetime"]
+                ret = row["return_datetime"]
+
+                dep_str  = dep.strftime("%a %d %b  %H:%M") if pd.notna(dep) else "—"
+                ret_str  = ret.strftime("%a %d %b  %H:%M") if pd.notna(ret) else "—"
+
+                # trip duration in nights
+                if pd.notna(dep) and pd.notna(ret):
+                    nights = (ret.date() - dep.date()).days
+                    duration = f"{nights} nights"
+                else:
+                    duration = ""
+
+                is_cheapest = row["price"] == cheapest_price
+                badge_class = "price-badge cheapest-badge" if is_cheapest else "price-badge"
+
+                flight_rows_html += f"""
+                <div class="flight-row">
+                    <span class="{badge_class}">€{row['price']:.2f}</span>
+                    <span class="flight-detail">🛫 {dep_str}</span>
+                    <span class="flight-sep">→</span>
+                    <span class="flight-detail">🛬 {ret_str}</span>
+                    {"<span class='duration-tag'>🌙 " + duration + "</span>" if duration else ""}
+                </div>"""
+
+            st.markdown(f"""
+            <div class="dest-card">
+                <div class="dest-title">🌍 {dest}
+                    <span style="font-weight:400;font-size:0.82rem;color:#666;margin-left:0.5rem;">
+                        {n} option{"s" if n > 1 else ""} · from €{cheapest_price:.2f}
+                    </span>
+                </div>
+                {flight_rows_html}
+            </div>
+            """, unsafe_allow_html=True)
 
 st.divider()
 
-# ── Chart ───────────────────────────────────────────────────────────────────────
-st.subheader("Average price per destination")
+# ── Chart ────────────────────────────────────────────────────────────────────────
+st.subheader("📊 Average price per destination")
 
-if not filtered.empty:
-    avg_by_dest = (
-        filtered.groupby("destination", as_index=False)["price"]
-        .mean()
-        .sort_values("price")
-    )
+avg_by_dest = (
+    filtered.groupby(["destination", "departure_airport"], as_index=False)["price"]
+    .mean()
+    .sort_values("price")
+)
 
-    chart = (
-        alt.Chart(avg_by_dest)
-        .mark_bar(color="#4C8BF5")
-        .encode(
-            x=alt.X("price:Q", title="Average price (€)", axis=alt.Axis(format=",.0f")),
-            y=alt.Y("destination:N", sort="-x", title="Destination"),
-            tooltip=[
-                alt.Tooltip("destination:N", title="Destination"),
-                alt.Tooltip("price:Q", title="Avg price (€)", format=".2f"),
-            ],
-        )
-        .properties(height=max(150, len(avg_by_dest) * 35))
+chart = (
+    alt.Chart(avg_by_dest)
+    .mark_bar()
+    .encode(
+        x=alt.X("price:Q", title="Average price (€)", axis=alt.Axis(format=",.0f")),
+        y=alt.Y("destination:N", sort="-x", title=None),
+        color=alt.Color(
+            "departure_airport:N",
+            title="Airport",
+            scale=alt.Scale(scheme="tableau10"),
+        ),
+        tooltip=[
+            alt.Tooltip("departure_airport:N", title="From"),
+            alt.Tooltip("destination:N", title="To"),
+            alt.Tooltip("price:Q", title="Avg price (€)", format=".2f"),
+        ],
     )
-    st.altair_chart(chart, use_container_width=True)
-else:
-    st.info("No data to chart.")
+    .properties(height=max(180, len(avg_by_dest) * 30))
+)
+
+st.altair_chart(chart, use_container_width=True)
