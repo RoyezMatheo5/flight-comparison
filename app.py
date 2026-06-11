@@ -55,7 +55,7 @@ def parse_dt(raw: str):
     c = clean_dt(raw).replace(" - ", " ").strip()
     # Strip the leading weekday name (e.g. "Monday ") — day names in the
     # source data can be wrong, so we derive the correct weekday from the date.
-    c = re.sub(r"^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+", "", c)
+    c = re.sub(r"^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+", "", c, flags=re.IGNORECASE)
     for fmt in ("%d %B %Y %H:%M", "%d %B %H:%M"):
         try:
             dt = pd.to_datetime(c, format=fmt)
