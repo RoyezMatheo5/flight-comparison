@@ -53,7 +53,10 @@ def parse_dt(raw: str):
     if not isinstance(raw, str):
         return None
     c = clean_dt(raw).replace(" - ", " ").strip()
-    for fmt in ("%A %d %B %Y %H:%M", "%A %d %B %H:%M"):
+    # Strip the leading weekday name (e.g. "Monday ") — day names in the
+    # source data can be wrong, so we derive the correct weekday from the date.
+    c = re.sub(r"^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+", "", c)
+    for fmt in ("%d %B %Y %H:%M", "%d %B %H:%M"):
         try:
             dt = pd.to_datetime(c, format=fmt)
             return dt.replace(year=2026) if dt.year == 1900 else dt
