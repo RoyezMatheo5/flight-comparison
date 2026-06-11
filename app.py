@@ -1,4 +1,3 @@
-import io
 import re
 import streamlit as st
 import pandas as pd
@@ -127,30 +126,12 @@ with st.sidebar:
         step=1.0,
     )
 
-    dep_dates = df["departure_datetime"].dropna()
-    min_date = dep_dates.min().date()
-    max_date = dep_dates.max().date()
-    sel_date_range = st.date_input(
-        "Departure date range",
-        value=(min_date, max_date),
-        min_value=min_date,
-        max_value=max_date,
-    )
-
 # ── Apply filters ───────────────────────────────────────────────────────────────
 filtered = df[
     df["departure_airport"].isin(sel_airports)
     & df["destination"].isin(sel_destinations)
     & (df["price"] <= sel_max_price)
 ]
-
-if isinstance(sel_date_range, (list, tuple)) and len(sel_date_range) == 2:
-    d_start, d_end = pd.Timestamp(sel_date_range[0]), pd.Timestamp(sel_date_range[1])
-    filtered = filtered[
-        filtered["departure_datetime"].notna()
-        & (filtered["departure_datetime"] >= d_start)
-        & (filtered["departure_datetime"] <= d_end + pd.Timedelta(days=1))
-    ]
 
 filtered = filtered.sort_values("price").reset_index(drop=True)
 
